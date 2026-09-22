@@ -31,8 +31,17 @@ jobs:
         run: |
           unzip -o kernel.zip
           ls -la kernel.raw
+          file kernel.raw
+
+      - name: Debug env
+        run: |
+          echo "WORKSPACE=$GITHUB_WORKSPACE"
+          echo "PWD=$(pwd)"
+          ls -la
 
       - name: Run Ghidra (symbols only)
+        env:
+          GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
           mkdir -p /tmp/proj
           timeout 600 $GHIDRA/support/analyzeHeadless /tmp/proj ios27 \
@@ -40,22 +49,25 @@ jobs:
             -noanalysis \
             -scriptPath scripts \
             -postScript find_offsets.py \
-            -deleteProject || true
+            -deleteProject || echo "Ghidra exited with $?"
 
-      - name: Show result
+      - name: Find output
         if: always()
         run: |
-          if [ -f offsets.txt ]; then
-            echo "=== offsets.txt ==="
-            cat offsets.txt
+          echo "=== searching for offsets.txt ==="
+          find / -name "offsets.txt" 2>/dev/null || true
+          echo "=== workspace ==="
+          ls -la "$GITHUB_WORKSPACE" || true
+          if [ -f "$GITHUB_WORKSPACE/offsets.txt" ]; then
+            echo "=== CONTENT ==="
+            cat "$GITHUB_WORKSPACE/offsets.txt"
           else
-            echo "[-] no offsets.txt"
-            ls -la
+            echo "[-] NOT FOUND in workspace"
           fi
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: offsets-${{ github.run_number }}
-          path: offsets.txt
+          path: ${{ github.workspace }}/offsets.txt
           if-no-files-found: warn
