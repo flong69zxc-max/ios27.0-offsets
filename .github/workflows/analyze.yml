@@ -1,49 +1,89 @@
 name: Extract iOS 27 Kernel Offsets
-on: workflow_dispatch
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'scripts/find_offsets.py'
+      - 'kernel.zip'
 
 jobs:
   analyze:
-    runs-on: macos-14
-    timeout-minutes: 60
+    runs-on: macos-14-large
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify zip
-        run: |
-          ls -la kernel.zip
-          file kernel.zip
+      - name: Cache Homebrew
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-macos-v1
 
-      - name: Unzip kernel
-        run: |
-          unzip -o kernel.zip
-          ls -la
-          file kernel.raw 2>/dev/null || file $(ls -1 | grep -v -E '\.(zip|md|yml|py)$' | head -1)
+      - name: Cache Ghidra
+        uses: actions/cache@v4
+        with:
+          path: ghidra_11.0.3_PUBLIC
+          key: ghidra-11.0.3-macos-v1
 
-      - name: Install dependencies
+      - name: Setup Java
         run: |
-          brew install openjdk wget unzip || true
+          brew install openjdk || true
           echo "$(brew --prefix openjdk)/bin" >> $GITHUB_PATH
 
-      - name: Download Ghidra
+      - name: Setup Ghidra
         run: |
-          wget -q https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_11.0.3_build/ghidra_11.0.3_PUBLIC_20240410.zip
-          unzip -q ghidra_11.0.3_PUBLIC_20240410.zip
+          if [ ! -d ghidra_11.0.3_PUBLIC ]; then
+            wget -q https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_11.0.3_build/ghidra_11.0.3_PUBLIC_20240410.zip
+            unzip -q ghidra_11.0.3_PUBLIC_20240410.zip
+          fi
           echo "GHIDRA=$(pwd)/ghidra_11.0.3_PUBLIC" >> $GITHUB_ENV
+          echo "MAXMEM=6G" >> $GITHUB_ENV
+
+      - name: Cache Ghidra Project
+        uses: actions/cache@v4
+        with:
+          path: /tmp/proj
+          key: ghidra-proj-${{ hashFiles('kernel.zip') }}-v2
+
+      - name: Prepare kernel
+        run: |
+          unzip -o kernel.zip
+          ls -la kernel.raw
+          file kernel.raw
 
       - name: Run Ghidra Headless
         run: |
           mkdir -p /tmp/proj
-          KERNEL=$(ls -1 | grep -E 'kernel\.raw$' | head -1)
-          echo "Analyzing: $KERNEL"
-          $GHIDRA/support/analyzeHeadless /tmp/proj ios27 \
-            -import "$KERNEL" \
-            -postScript find_offsets.py \
-            -scriptPath scripts \
-            -deleteProject
+          if [ -d "/tmp/proj/ios27.rep" ]; then
+            echo "=== CACHED PROJECT — script only ==="
+            $GHIDRA/support/analyzeHeadless /tmp/proj ios27 \
+              -process kernel.raw \
+              -noanalysis \
+              -scriptPath scripts \
+              -postScript find_offsets.py
+          else
+            echo "=== FULL ANALYSIS ==="
+            $GHIDRA/support/analyzeHeadless /tmp/proj ios27 \
+              -import kernel.raw \
+              -scriptPath scripts \
+              -postScript find_offsets.py
+          fi
 
-      - name: Upload results
+      - name: Show result
+        if: always()
+        run: |
+          if [ -f offsets.txt ]; then
+            echo "=== offsets.txt ==="
+            cat offsets.txt
+          else
+            echo "[-] offsets.txt not created"
+          fi
+
+      - name: Upload artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: offsets
+          name: offsets-${{ github.run_number }}
           path: offsets.txt
-          if-no-files-found: error
+          if-no-files-found: warn
