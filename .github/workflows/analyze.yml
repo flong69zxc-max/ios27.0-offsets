@@ -8,27 +8,21 @@ on:
 
 jobs:
   analyze:
-    runs-on: macos-14
-    timeout-minutes: 90
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-
-      - name: Cache Homebrew
-        uses: actions/cache@v4
-        with:
-          path: ~/Library/Caches/Homebrew
-          key: brew-macos-v1
 
       - name: Cache Ghidra
         uses: actions/cache@v4
         with:
           path: ghidra_11.0.3_PUBLIC
-          key: ghidra-11.0.3-macos-v1
+          key: ghidra-11.0.3-linux-v1
 
-      - name: Setup Java
+      - name: Install Java + deps
         run: |
-          brew install openjdk || true
-          echo "$(brew --prefix openjdk)/bin" >> $GITHUB_PATH
+          sudo apt-get update
+          sudo apt-get install -y openjdk-17-jdk-headless wget unzip
 
       - name: Setup Ghidra
         run: |
@@ -37,13 +31,14 @@ jobs:
             unzip -q ghidra_11.0.3_PUBLIC_20240410.zip
           fi
           echo "GHIDRA=$(pwd)/ghidra_11.0.3_PUBLIC" >> $GITHUB_ENV
-          sed -i '' 's/^MAXMEM=.*/MAXMEM=4500M/' $GHIDRA/support/launch.properties || true
+          # ограничиваем heap — Linux OpenJDK 17 жрёт меньше
+          sed -i 's/^MAXMEM=.*/MAXMEM=4G/' $GHIDRA/support/launch.properties || true
 
       - name: Cache Ghidra Project
         uses: actions/cache@v4
         with:
           path: /tmp/proj
-          key: ghidra-proj-${{ hashFiles('kernel.zip') }}-v3
+          key: ghidra-proj-${{ hashFiles('kernel.zip') }}-v4
 
       - name: Prepare kernel
         run: |
@@ -51,20 +46,21 @@ jobs:
           ls -la kernel.raw
           file kernel.raw
 
-      - name: Run Ghidra Headless
+      - name: Run Ghidra Headless (timeout 15 min)
         run: |
           mkdir -p /tmp/proj
           if [ -d "/tmp/proj/ios27.rep" ]; then
-            echo "=== CACHED PROJECT — script only ==="
+            echo "=== CACHED PROJECT ==="
             $GHIDRA/support/analyzeHeadless /tmp/proj ios27 \
               -process kernel.raw \
               -noanalysis \
               -scriptPath scripts \
               -postScript find_offsets.py
           else
-            echo "=== FULL ANALYSIS ==="
-            $GHIDRA/support/analyzeHeadless /tmp/proj ios27 \
+            echo "=== FULL ANALYSIS (capped at 15 min) ==="
+            timeout 1200 $GHIDRA/support/analyzeHeadless /tmp/proj ios27 \
               -import kernel.raw \
+              -analysisTimeoutPerFile 900 \
               -scriptPath scripts \
               -postScript find_offsets.py
           fi
