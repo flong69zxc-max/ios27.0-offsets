@@ -4,7 +4,7 @@ on: workflow_dispatch
 jobs:
   analyze:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -32,20 +32,26 @@ jobs:
           unzip -o kernel.zip
           ls -la kernel.raw
 
-      - name: Run Ghidra (no analysis)
+      - name: Run Ghidra (symbols only)
         run: |
           mkdir -p /tmp/proj
-          $GHIDRA/support/analyzeHeadless /tmp/proj ios27 \
+          timeout 600 $GHIDRA/support/analyzeHeadless /tmp/proj ios27 \
             -import kernel.raw \
             -noanalysis \
             -scriptPath scripts \
             -postScript find_offsets.py \
-            -deleteProject
+            -deleteProject || true
 
       - name: Show result
         if: always()
         run: |
-          [ -f offsets.txt ] && cat offsets.txt || echo "no offsets.txt"
+          if [ -f offsets.txt ]; then
+            echo "=== offsets.txt ==="
+            cat offsets.txt
+          else
+            echo "[-] no offsets.txt"
+            ls -la
+          fi
 
       - uses: actions/upload-artifact@v4
         if: always()
