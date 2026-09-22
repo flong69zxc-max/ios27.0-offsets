@@ -7,6 +7,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify kernel.raw
+        run: |
+          ls -la kernel.raw
+          file kernel.raw
+
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -17,13 +22,6 @@ jobs:
           wget -q https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_11.0.3_build/ghidra_11.0.3_PUBLIC_20240410.zip
           unzip -q ghidra_11.0.3_PUBLIC_20240410.zip
           echo "GHIDRA=$(pwd)/ghidra_11.0.3_PUBLIC" >> $GITHUB_ENV
-
-      - name: Prepare kernelcache
-        run: |
-          # Загружаем kernel.raw из секретов или артефактов
-          echo "${{ secrets.KERNEL_RAW_BASE64 }}" | base64 -d > kernel.raw
-          ls -la kernel.raw
-          file kernel.raw
 
       - name: Run Ghidra Headless
         run: |
