@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # @category iOS
 # @runtime Jython
 
@@ -6,7 +7,6 @@ import sys
 
 print("=== SCRIPT START ===")
 
-# Абсолютный путь через GITHUB_WORKSPACE
 ws = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(ws, "offsets.txt")
 print("=== OUTPUT: %s ===" % OUT)
@@ -23,13 +23,12 @@ BASE = 0xFFFFFFF00710B098
 out.write("BASE: 0x%x\n\n" % BASE)
 out.flush()
 
-
-# ─── SYMBOLS ──────────────────────────────────────────────
 out.write("=== SYMBOLS ===\n")
 out.flush()
 
 names = [
-    "_allproc", "_kernproc",
+    "_allproc",
+    "_kernproc",
     "_cs_enforcement_disable",
     "_amfi_get_out_of_my_way",
     "_task_for_pid",
@@ -37,9 +36,11 @@ names = [
     "_necp_client_copy_result",
     "_necp_client_add_flow",
     "_necp_client_remove_flow",
-    "_proc_ucred", "_proc_pid",
+    "_proc_ucred",
+    "_proc_pid",
     "_kauth_cred_getuid",
-    "_current_task", "_current_proc",
+    "_current_task",
+    "_current_proc",
 ]
 
 try:
@@ -53,7 +54,7 @@ try:
                     addr = s.getAddress().getOffset()
                     break
             if addr is not None:
-                line = "%-32s 0x%x  (off=0x%x)\n" % (name, addr, addr - BASE)
+                line = "%-32s 0x%x  off=0x%x\n" % (name, addr, addr - BASE)
             else:
                 line = "%-32s NOT_FOUND\n" % name
             out.write(line)
