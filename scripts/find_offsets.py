@@ -3,70 +3,55 @@
 # @runtime Jython
 
 import os
-import sys
-
-print("=== SCRIPT START ===")
 
 ws = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(ws, "offsets.txt")
-print("=== OUTPUT: %s ===" % OUT)
-
-try:
-    out = open(OUT, "w")
-    out.write("=== iOS 27.0 24A437 Kernel Offsets ===\n")
-    out.flush()
-except Exception as e:
-    print("CANNOT OPEN OUTPUT: %s" % e)
-    sys.exit(1)
+out = open(OUT, "w")
+out.write("=== iOS 27.0 24A437 Disasm ===\n")
+out.flush()
 
 BASE = 0xFFFFFFF00710B098
-out.write("BASE: 0x%x\n\n" % BASE)
-out.flush()
 
-out.write("=== SYMBOLS ===\n")
-out.flush()
 
-names = [
-    "_allproc",
-    "_kernproc",
-    "_cs_enforcement_disable",
-    "_amfi_get_out_of_my_way",
-    "_task_for_pid",
-    "_necp_client_action",
-    "_necp_client_copy_result",
-    "_necp_client_add_flow",
-    "_necp_client_remove_flow",
-    "_proc_ucred",
-    "_proc_pid",
-    "_kauth_cred_getuid",
-    "_current_task",
-    "_current_proc",
-]
-
-try:
-    tbl = currentProgram.getSymbolTable()
-    for name in names:
-        try:
-            addr = None
-            for s in tbl.getAllSymbols(True):
-                n = s.getName()
-                if n == name or n.lstrip("_") == name.lstrip("_"):
-                    addr = s.getAddress().getOffset()
-                    break
-            if addr is not None:
-                line = "%-32s 0x%x  off=0x%x\n" % (name, addr, addr - BASE)
-            else:
-                line = "%-32s NOT_FOUND\n" % name
-            out.write(line)
-            out.flush()
-            print("SYM: %s" % line.strip())
-        except Exception as e:
-            out.write("%-32s ERR: %s\n" % (name, e))
-            out.flush()
-except Exception as e:
-    out.write("TBL_ERR: %s\n" % e)
+def disasm(addr_hex, n, label):
+    out.write("\n=== %s @ %s ===\n" % (label, addr_hex))
     out.flush()
-    print("SYMBOL TABLE ERROR: %s" % e)
+    try:
+        a = toAddr(int(addr_hex, 16))
+    except:
+        out.write("BAD_ADDR\n")
+        return
+    if a is None:
+        out.write("NULL_ADDR\n")
+        return
+    listing = currentProgram.getListing()
+    cur = a
+    for i in range(n):
+        inst = listing.getInstructionAt(cur)
+        if inst is None:
+            try:
+                disassemble(cur)
+            except:
+                pass
+            inst = listing.getInstructionAt(cur)
+            if inst is None:
+                out.write("[stop @ 0x%x]\n" % cur.getOffset())
+                break
+        out.write("0x%x: %s\n" % (cur.getOffset(), inst.toString()))
+        if i % 50 == 49:
+            out.flush()
+        nxt = inst.getNext()
+        if nxt is None:
+            break
+        cur = nxt.getAddress()
+    out.flush()
+
+
+# Known addresses from tester
+disasm("0xFFFFFFF0070D2AC4", 800, "necp_client_copy_result")
+disasm("0xFFFFFFF0070951D9", 500, "necp_client_action")
+disasm("0xFFFFFFF0074440E3", 50,  "allproc_area")
+disasm("0xFFFFFFF00763332F", 20,  "cs_enforcement_area")
 
 out.write("\n=== DONE ===\n")
 out.close()
