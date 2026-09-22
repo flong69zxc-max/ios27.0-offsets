@@ -1,0 +1,41 @@
+name: Extract iOS 27 Kernel Offsets
+on: workflow_dispatch
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openjdk-17-jdk-headless unzip wget
+
+      - name: Download Ghidra
+        run: |
+          wget -q https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_11.0.3_build/ghidra_11.0.3_PUBLIC_20240410.zip
+          unzip -q ghidra_11.0.3_PUBLIC_20240410.zip
+          echo "GHIDRA=$(pwd)/ghidra_11.0.3_PUBLIC" >> $GITHUB_ENV
+
+      - name: Prepare kernelcache
+        run: |
+          # Загружаем kernel.raw из секретов или артефактов
+          echo "${{ secrets.KERNEL_RAW_BASE64 }}" | base64 -d > kernel.raw
+          ls -la kernel.raw
+          file kernel.raw
+
+      - name: Run Ghidra Headless
+        run: |
+          mkdir -p /tmp/proj
+          $GHIDRA/support/analyzeHeadless /tmp/proj ios27 \
+            -import kernel.raw \
+            -postScript scripts/find_offsets.py \
+            -scriptPath scripts \
+            -deleteProject
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: offsets
+          path: offsets.txt
