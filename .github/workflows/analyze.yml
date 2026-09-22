@@ -9,7 +9,7 @@ on:
 
 jobs:
   analyze:
-    runs-on: macos-14-large
+    runs-on: macos-14
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
@@ -38,7 +38,8 @@ jobs:
             unzip -q ghidra_11.0.3_PUBLIC_20240410.zip
           fi
           echo "GHIDRA=$(pwd)/ghidra_11.0.3_PUBLIC" >> $GITHUB_ENV
-          echo "MAXMEM=6G" >> $GITHUB_ENV
+          # ограничиваем heap чтобы не упало по OOM на 7 ГБ
+          sed -i '' 's/^MAXMEM=.*/MAXMEM=4500M/' $GHIDRA/support/launch.properties || true
 
       - name: Cache Ghidra Project
         uses: actions/cache@v4
