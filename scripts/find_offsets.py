@@ -1,61 +1,72 @@
-name: Extract iOS 27 Kernel Offsets
-on: workflow_dispatch
+# @category iOS
+# @runtime Jython
 
-jobs:
-  analyze:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
+import os
+import sys
 
-      - name: Cache Ghidra
-        uses: actions/cache@v4
-        with:
-          path: ghidra_11.0.3_PUBLIC
-          key: ghidra-11.0.3-linux-v1
+print("=== SCRIPT START ===")
 
-      - name: Install deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y openjdk-17-jdk-headless wget unzip
+# Абсолютный путь через GITHUB_WORKSPACE
+ws = os.environ.get("GITHUB_WORKSPACE", "/tmp")
+OUT = os.path.join(ws, "offsets.txt")
+print("=== OUTPUT: %s ===" % OUT)
 
-      - name: Setup Ghidra
-        run: |
-          if [ ! -d ghidra_11.0.3_PUBLIC ]; then
-            wget -q https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_11.0.3_build/ghidra_11.0.3_PUBLIC_20240410.zip
-            unzip -q ghidra_11.0.3_PUBLIC_20240410.zip
-          fi
-          echo "GHIDRA=$(pwd)/ghidra_11.0.3_PUBLIC" >> $GITHUB_ENV
+try:
+    out = open(OUT, "w")
+    out.write("=== iOS 27.0 24A437 Kernel Offsets ===\n")
+    out.flush()
+except Exception as e:
+    print("CANNOT OPEN OUTPUT: %s" % e)
+    sys.exit(1)
 
-      - name: Prepare kernel
-        run: |
-          unzip -o kernel.zip
-          ls -la kernel.raw
+BASE = 0xFFFFFFF00710B098
+out.write("BASE: 0x%x\n\n" % BASE)
+out.flush()
 
-      - name: Run Ghidra (symbols only)
-        run: |
-          mkdir -p /tmp/proj
-          timeout 600 $GHIDRA/support/analyzeHeadless /tmp/proj ios27 \
-            -import kernel.raw \
-            -noanalysis \
-            -scriptPath scripts \
-            -postScript find_offsets.py \
-            -deleteProject || true
 
-      - name: Show result
-        if: always()
-        run: |
-          if [ -f offsets.txt ]; then
-            echo "=== offsets.txt ==="
-            cat offsets.txt
-          else
-            echo "[-] no offsets.txt"
-            ls -la
-          fi
+# ─── SYMBOLS ──────────────────────────────────────────────
+out.write("=== SYMBOLS ===\n")
+out.flush()
 
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: offsets-${{ github.run_number }}
-          path: offsets.txt
-          if-no-files-found: warn
+names = [
+    "_allproc", "_kernproc",
+    "_cs_enforcement_disable",
+    "_amfi_get_out_of_my_way",
+    "_task_for_pid",
+    "_necp_client_action",
+    "_necp_client_copy_result",
+    "_necp_client_add_flow",
+    "_necp_client_remove_flow",
+    "_proc_ucred", "_proc_pid",
+    "_kauth_cred_getuid",
+    "_current_task", "_current_proc",
+]
+
+try:
+    tbl = currentProgram.getSymbolTable()
+    for name in names:
+        try:
+            addr = None
+            for s in tbl.getAllSymbols(True):
+                n = s.getName()
+                if n == name or n.lstrip("_") == name.lstrip("_"):
+                    addr = s.getAddress().getOffset()
+                    break
+            if addr is not None:
+                line = "%-32s 0x%x  (off=0x%x)\n" % (name, addr, addr - BASE)
+            else:
+                line = "%-32s NOT_FOUND\n" % name
+            out.write(line)
+            out.flush()
+            print("SYM: %s" % line.strip())
+        except Exception as e:
+            out.write("%-32s ERR: %s\n" % (name, e))
+            out.flush()
+except Exception as e:
+    out.write("TBL_ERR: %s\n" % e)
+    out.flush()
+    print("SYMBOL TABLE ERROR: %s" % e)
+
+out.write("\n=== DONE ===\n")
+out.close()
+print("=== SCRIPT END ===")
