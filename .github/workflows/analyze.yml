@@ -7,8 +7,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify kernel.raw
+      - name: Verify zip
         run: |
+          ls -la kernel.raw.zip
+          file kernel.raw.zip
+
+      - name: Unzip kernel
+        run: |
+          unzip -o kernel.raw.zip
           ls -la kernel.raw
           file kernel.raw
 
