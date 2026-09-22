@@ -3,25 +3,26 @@ on: workflow_dispatch
 
 jobs:
   analyze:
-    runs-on: ubuntu-latest
+    runs-on: macos-14
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
       - name: Verify zip
         run: |
-          ls -la kernel.raw.zip
-          file kernel.raw.zip
+          ls -la kernel.zip
+          file kernel.zip
 
       - name: Unzip kernel
         run: |
-          unzip -o kernel.raw.zip
-          ls -la kernel.raw
-          file kernel.raw
+          unzip -o kernel.zip
+          ls -la
+          file kernel.raw 2>/dev/null || file $(ls -1 | grep -v -E '\.(zip|md|yml|py)$' | head -1)
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y openjdk-17-jdk-headless unzip wget
+          brew install openjdk wget unzip || true
+          echo "$(brew --prefix openjdk)/bin" >> $GITHUB_PATH
 
       - name: Download Ghidra
         run: |
@@ -32,9 +33,11 @@ jobs:
       - name: Run Ghidra Headless
         run: |
           mkdir -p /tmp/proj
+          KERNEL=$(ls -1 | grep -E 'kernel\.raw$' | head -1)
+          echo "Analyzing: $KERNEL"
           $GHIDRA/support/analyzeHeadless /tmp/proj ios27 \
-            -import kernel.raw \
-            -postScript scripts/find_offsets.py \
+            -import "$KERNEL" \
+            -postScript find_offsets.py \
             -scriptPath scripts \
             -deleteProject
 
@@ -43,3 +46,4 @@ jobs:
         with:
           name: offsets
           path: offsets.txt
+          if-no-files-found: error
